@@ -12,23 +12,24 @@ namespace TheLedgerCo.Services
     {
         private readonly IHostApplicationLifetime _applicationLifetime;
         private readonly ILoanRepaymentInfoService _loanRepaymentInfoService;
+        private readonly string[] _args;
 
-        public ConsoleService(IHostApplicationLifetime applicationLifetime, ILoanRepaymentInfoService loanRepaymentInfoService)
+        public ConsoleService(IHostApplicationLifetime applicationLifetime, ILoanRepaymentInfoService loanRepaymentInfoService, string[] args)
         {
             _applicationLifetime = applicationLifetime ?? throw new ArgumentNullException(nameof(applicationLifetime));
             _loanRepaymentInfoService = loanRepaymentInfoService ?? throw new ArgumentNullException(nameof(loanRepaymentInfoService));
+            _args = args ?? throw new ArgumentNullException(nameof(args));
         }
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
-
             _applicationLifetime.ApplicationStarted.Register(() =>
             {
                 Task.Run(async () =>
                 {
                     try
                     {
-                       await _loanRepaymentInfoService.GenerateLoanRepaymentInfoAsync();
+                        await _loanRepaymentInfoService.GenerateLoanRepaymentInfoAsync(_args);
                     }
                     catch (Exception ex)
                     {

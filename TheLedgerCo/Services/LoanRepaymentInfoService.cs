@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.Configuration;
 using TheLedgerCo.Models;
 using TheLedgerCo.Constants;
-using System.Text;
 using System.Threading.Tasks;
 using System;
 using System.Collections.Generic;
@@ -11,7 +10,7 @@ namespace TheLedgerCo.Services
 {
     public interface ILoanRepaymentInfoService
     {
-        Task GenerateLoanRepaymentInfoAsync();
+        Task GenerateLoanRepaymentInfoAsync(string[] args);
     }
 
     public class LoanRepaymentInfoService : ILoanRepaymentInfoService
@@ -29,9 +28,9 @@ namespace TheLedgerCo.Services
             _calculatorService = calculatorService ?? throw new ArgumentNullException(nameof(calculatorService));
         }
 
-        public async Task GenerateLoanRepaymentInfoAsync()
+        public async Task GenerateLoanRepaymentInfoAsync(string[] args)
         {
-            var files = _fileReaderService.GetAvailableInputFiles(_configuration.GetValue<string>(ConfigurationSettings.InputFileDirectory));
+            var files = _fileReaderService.GetAvailableInputFiles(args[0]);
 
             if (files == null)
             {
@@ -47,49 +46,12 @@ namespace TheLedgerCo.Services
 
                 var fileContents = await _fileReaderService.GetFileContentsAsync(files[i]);
 
-                if (fileContents == null)
-                {
-                    return;
-                }
-
-                foreach (var line in fileContents)
-                {
-                    var commandStringArray = GetCommandQuery(line);
-
-                    BuildDataListFromObjects(commandStringArray, loans, payments, balanceQueries);
-                }
+                ReadFileContents(loans, payments, balanceQueries, fileContents);
 
                 Console.WriteLine($"\r\nOUTPUT for File {i + 1}");
                 Console.WriteLine("-------------------");
                 var loanRepaymentInfoSummary = GenerateLoanRepaymentInfoSummary(loans, payments, balanceQueries);
                 OutputLoanRepaymentInfoSummary(loanRepaymentInfoSummary);
-            }
-        }
-
-        private string[] GetCommandQuery(string line)
-        {
-            if (string.IsNullOrWhiteSpace(line))
-                throw new ArgumentNullException(nameof(line));
-
-            return line.Split(" ");
-        }
-
-        private void BuildDataListFromObjects(string[] commandStringArray, List<Loan> loans, List<Payment> payments, List<Balance> balanceQueries)
-        {
-            if (commandStringArray[0].Equals(Commands.Loan, StringComparison.OrdinalIgnoreCase))
-            {
-                var loan = _commandToLedgerObjectConverter.BuildLoanObject(commandStringArray);
-                loans.Add(loan);
-            }
-            else if (commandStringArray[0].Equals(Commands.Payment, StringComparison.OrdinalIgnoreCase))
-            {
-                var payment = _commandToLedgerObjectConverter.BuildPaymentObject(commandStringArray);
-                payments.Add(payment);
-            }
-            else if (commandStringArray[0].Equals(Commands.Balance, StringComparison.OrdinalIgnoreCase))
-            {
-                var balance = _commandToLedgerObjectConverter.BuildBalanceObject(commandStringArray);
-                balanceQueries.Add(balance);
             }
         }
 
@@ -129,11 +91,38 @@ namespace TheLedgerCo.Services
                             var loanRepaymentInfo = _calculatorService.GetLoanRepaymentInfo(balanceQuery, loan);
                             loanRepaymentInfoList.Add(loanRepaymentInfo);
                         }
-                   }
+                    }
                 }
             }
 
             return loanRepaymentInfoList;
+        }
+
+        private string[] GetCommandQuery(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                throw new ArgumentNullException(nameof(line));
+
+            return line.Split(" ");
+        }
+
+        private void BuildDataListFromObjects(string[] commandStringArray, List<Loan> loans, List<Payment> payments, List<Balance> balanceQueries)
+        {
+            if (commandStringArray[0].Equals(Commands.Loan, StringComparison.OrdinalIgnoreCase))
+            {
+                var loan = _commandToLedgerObjectConverter.BuildLoanObject(commandStringArray);
+                loans.Add(loan);
+            }
+            else if (commandStringArray[0].Equals(Commands.Payment, StringComparison.OrdinalIgnoreCase))
+            {
+                var payment = _commandToLedgerObjectConverter.BuildPaymentObject(commandStringArray);
+                payments.Add(payment);
+            }
+            else if (commandStringArray[0].Equals(Commands.Balance, StringComparison.OrdinalIgnoreCase))
+            {
+                var balance = _commandToLedgerObjectConverter.BuildBalanceObject(commandStringArray);
+                balanceQueries.Add(balance);
+            }
         }
 
         private void OutputLoanRepaymentInfoSummary(List<LoanRepaymentInfo> loanRepaymentInfoSummary)
@@ -147,6 +136,21 @@ namespace TheLedgerCo.Services
                     Console.WriteLine($"{output}\n");
                 else
                     Console.WriteLine($"{output}");
+            }
+        }
+
+        private void ReadFileContents(List<Loan> loans, List<Payment> payments, List<Balance> balanceQueries, string[] fileContents)
+        {
+            if (fileContents == null)
+            {
+                return;
+            }
+
+            foreach (var line in fileContents)
+            {
+                var commandStringArray = GetCommandQuery(line);
+
+                BuildDataListFromObjects(commandStringArray, loans, payments, balanceQueries);
             }
         }
     }
