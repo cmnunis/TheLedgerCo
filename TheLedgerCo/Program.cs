@@ -22,6 +22,7 @@ namespace TheLedgerCo
                 services.AddScoped<ICommandToLedgerObjectConverterService, CommandToLedgerObjectConverterService>();
                 services.AddScoped<ICalculatorService, CalculatorService>();
                 services.AddScoped<IFileReaderService, FileReaderService>();
+                services.AddScoped<ILoanRepaymentInfoSummaryService, LoanRepaymentInfoSummaryService>();
                 services.AddScoped<ILoanRepaymentInfoService, LoanRepaymentInfoService>();
                 services.AddHostedService<ConsoleService>();
             });

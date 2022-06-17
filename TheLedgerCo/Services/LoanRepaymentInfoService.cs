@@ -1,10 +1,10 @@
-﻿using Microsoft.Extensions.Configuration;
-using TheLedgerCo.Models;
+﻿using TheLedgerCo.Models;
 using TheLedgerCo.Constants;
 using System.Threading.Tasks;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using TheLedgerCo.Extensions;
 
 namespace TheLedgerCo.Services
 {
@@ -16,97 +16,53 @@ namespace TheLedgerCo.Services
     public class LoanRepaymentInfoService : ILoanRepaymentInfoService
     {
         private readonly ICommandToLedgerObjectConverterService _commandToLedgerObjectConverter;
-        private readonly IConfiguration _configuration;
         private readonly IFileReaderService _fileReaderService;
-        private readonly ICalculatorService _calculatorService;
+        private readonly ILoanRepaymentInfoSummaryService _loanRepaymentInfoSummaryService;
 
-        public LoanRepaymentInfoService(ICommandToLedgerObjectConverterService commandToLedgerObjectConverter, IConfiguration configuration, IFileReaderService fileReaderService, ICalculatorService calculatorService)
-        {
+        public LoanRepaymentInfoService(ICommandToLedgerObjectConverterService commandToLedgerObjectConverter, IFileReaderService fileReaderService, ILoanRepaymentInfoSummaryService loanRepaymentInfoSummaryService)
+        {   
             _commandToLedgerObjectConverter = commandToLedgerObjectConverter ?? throw new ArgumentNullException(nameof(commandToLedgerObjectConverter));
-            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             _fileReaderService = fileReaderService ?? throw new ArgumentNullException(nameof(fileReaderService));
-            _calculatorService = calculatorService ?? throw new ArgumentNullException(nameof(calculatorService));
+            _loanRepaymentInfoSummaryService = loanRepaymentInfoSummaryService ?? throw new ArgumentNullException(nameof(loanRepaymentInfoSummaryService));
         }
 
         public async Task GenerateLoanRepaymentInfoAsync(string[] args)
         {
-            var files = _fileReaderService.GetAvailableInputFiles(args[0]);
-
-            if (files == null)
+            if (args == null)
             {
-                Console.WriteLine("No files were found in the specified directory.");
-                return;
+                throw new ArgumentNullException(nameof(args));
             }
 
-            for (int i = 0; i < files.Length; i++)
+            foreach (var arg in args)
             {
-                var loans = new List<Loan>();
-                var payments = new List<Payment>();
-                var balanceQueries = new List<Balance>();
+                var files = _fileReaderService.GetAvailableInputFiles(arg);
 
-                var fileContents = await _fileReaderService.GetFileContentsAsync(files[i]);
-
-                ReadFileContents(loans, payments, balanceQueries, fileContents);
-
-                Console.WriteLine($"\r\nOUTPUT for File {i + 1}");
-                Console.WriteLine("-------------------");
-                var loanRepaymentInfoSummary = GenerateLoanRepaymentInfoSummary(loans, payments, balanceQueries);
-                OutputLoanRepaymentInfoSummary(loanRepaymentInfoSummary);
-            }
-        }
-
-        private List<LoanRepaymentInfo> GenerateLoanRepaymentInfoSummary(List<Loan> loans, List<Payment> payments, List<Balance> balanceQueries)
-        {
-            var loanRepaymentInfoList = new List<LoanRepaymentInfo>();
-
-            var balanceQueriesGroupedByBorrower = balanceQueries.GroupBy(x => new { x.Borrower.BorrowerName, x.Borrower.BankName })
-                                                            .Select(y => new { y.Key.BorrowerName, y.Key.BankName })
-                                                            .ToList();
-
-            foreach (var key in balanceQueriesGroupedByBorrower)
-            {
-                var borrowerBalanceQueries = balanceQueries.Where(x => x.Borrower.BorrowerName.Equals(key.BorrowerName)
-                                                                       && x.Borrower.BankName.Equals(key.BankName));
-
-                foreach (var balanceQuery in borrowerBalanceQueries)
+                if (files == null)
                 {
-                    var borrowerLoanRecords = loans.Where(x => x.Borrower.BorrowerName.Equals(key.BorrowerName)
-                                                                       && x.Borrower.BankName.Equals(key.BankName));
+                    Console.WriteLine("No files were found in the specified directory.");
+                    return;
+                }
 
-                    foreach (var loan in borrowerLoanRecords)
-                    {
-                        var lumpSumPaymentsMadeByBorrower = payments.Where(x => x.Borrower.BorrowerName.Equals(key.BorrowerName)
-                                                                       && x.Borrower.BankName.Equals(key.BankName));
+                for (int i = 0; i < files.Length; i++)
+                {
+                    var loans = new List<Loan>();
+                    var payments = new List<Payment>();
+                    var balanceQueries = new List<Balance>();
 
-                        if (lumpSumPaymentsMadeByBorrower.Count() > 0)
-                        {
-                            foreach (var lumpSumPayment in lumpSumPaymentsMadeByBorrower)
-                            {
-                                var loanRepaymentInfo = _calculatorService.GetLoanRepaymentInfo(balanceQuery, loan, payment: lumpSumPayment);
-                                loanRepaymentInfoList.Add(loanRepaymentInfo);
-                            }
-                        }
-                        else
-                        {
-                            var loanRepaymentInfo = _calculatorService.GetLoanRepaymentInfo(balanceQuery, loan);
-                            loanRepaymentInfoList.Add(loanRepaymentInfo);
-                        }
-                    }
+                    var fileContents = await _fileReaderService.GetFileContentsAsync(files[i]);
+
+                    GetDataFromFileContents(loans, payments, balanceQueries, fileContents);
+
+                    Console.WriteLine($"\r\nOUTPUT for File {i + 1}");
+                    Console.WriteLine("-------------------");
+                    var loanRepaymentInfoSummary = _loanRepaymentInfoSummaryService.GenerateLoanRepaymentInfoSummary(loans, payments, balanceQueries);
+                    var output = _loanRepaymentInfoSummaryService.OutputLoanRepaymentInfoSummary(loanRepaymentInfoSummary);
+                    Console.WriteLine(output);
                 }
             }
-
-            return loanRepaymentInfoList;
         }
 
-        private string[] GetCommandQuery(string line)
-        {
-            if (string.IsNullOrWhiteSpace(line))
-                throw new ArgumentNullException(nameof(line));
-
-            return line.Split(" ");
-        }
-
-        private void BuildDataListFromObjects(string[] commandStringArray, List<Loan> loans, List<Payment> payments, List<Balance> balanceQueries)
+        private void BuildDataSourceFromCommands(string[] commandStringArray, List<Loan> loans, List<Payment> payments, List<Balance> balanceQueries)
         {
             if (commandStringArray[0].Equals(Commands.Loan, StringComparison.OrdinalIgnoreCase))
             {
@@ -125,21 +81,7 @@ namespace TheLedgerCo.Services
             }
         }
 
-        private void OutputLoanRepaymentInfoSummary(List<LoanRepaymentInfo> loanRepaymentInfoSummary)
-        {
-            for (int i = 0; i < loanRepaymentInfoSummary.Count; i++)
-            {
-                var loanRepaymentInfo = loanRepaymentInfoSummary[i];
-                var output = $"{loanRepaymentInfo.Borrower.BankName} {loanRepaymentInfo.Borrower.BorrowerName} {loanRepaymentInfo.TotalAmountPaidToDate} {loanRepaymentInfo.MonthlyInstallmentsRemaining}";
-
-                if (loanRepaymentInfoSummary[i] == loanRepaymentInfoSummary.Last())
-                    Console.WriteLine($"{output}\n");
-                else
-                    Console.WriteLine($"{output}");
-            }
-        }
-
-        private void ReadFileContents(List<Loan> loans, List<Payment> payments, List<Balance> balanceQueries, string[] fileContents)
+        private void GetDataFromFileContents(List<Loan> loans, List<Payment> payments, List<Balance> balanceQueries, string[] fileContents)
         {
             if (fileContents == null)
             {
@@ -148,9 +90,9 @@ namespace TheLedgerCo.Services
 
             foreach (var line in fileContents)
             {
-                var commandStringArray = GetCommandQuery(line);
+                var commandStringArray = line.SplitCommand();
 
-                BuildDataListFromObjects(commandStringArray, loans, payments, balanceQueries);
+                BuildDataSourceFromCommands(commandStringArray, loans, payments, balanceQueries);
             }
         }
     }

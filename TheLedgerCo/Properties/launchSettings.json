@@ -1,8 +1,7 @@
 {
   "profiles": {
     "TheLedgerCo": {
-      "commandName": "Project",
-      "commandLineArgs": "geektrust/geektrust.dll \"C:/Projects/Test Files\""
+      "commandName": "Project"
     }
   }
 }
